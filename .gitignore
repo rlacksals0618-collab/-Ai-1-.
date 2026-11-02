@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 처음 실행 시 자동 다운로드되는 손동작 모델
+models/
