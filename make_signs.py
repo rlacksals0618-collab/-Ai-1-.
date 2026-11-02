@@ -9,10 +9,9 @@ import cv2
 import numpy as np
 
 import config
-from detectors import save_image
+from detectors import load_image, save_image
 
 W, H = 1754, 1240
-BLUE = (255, 0, 0)  # BGR. 화살표 색 = config.ARROW_HSV_* 범위
 GREEN = (60, 170, 0)
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
@@ -70,8 +69,30 @@ def make_arrow(direction):
         [x0, cy - half_shaft], [head_x, cy - half_shaft], [head_x, cy - half_head],
         [x1, cy], [head_x, cy + half_head], [head_x, cy + half_shaft], [x0, cy + half_shaft],
     ], np.int32)
-    cv2.fillPoly(img, [pts], BLUE)
+    cv2.fillPoly(img, [pts], BLACK)
     return cv2.flip(img, 1) if direction == "left" else img
+
+
+def pad_original_arrow(margin=0.2):
+    """assets/originals/arrow.jpg 를 A4 가로 가운데에 넉넉한 흰 여백(가로세로 각 margin)으로 배치.
+
+    원본은 화살촉 끝이 종이 가장자리에 너무 가까워서, 멀리서 보면 종이 밖 어두운 배경과
+    붙어 버려 인식이 안 된다.
+    """
+    src = config.ASSETS_DIR / "originals" / "arrow.jpg"
+    if not src.exists():
+        return None
+    arrow = load_image(src)
+    gray = cv2.cvtColor(arrow, cv2.COLOR_BGR2GRAY)
+    ys, xs = np.nonzero(gray < 128)  # 화살표(검은 부분)만 잘라냄
+    arrow = arrow[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    h, w = arrow.shape[:2]
+    scale = min(W * (1 - 2 * margin) / w, H * (1 - 2 * margin) / h)
+    arrow = cv2.resize(arrow, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+    img = np.full((H, W, 3), 255, np.uint8)
+    y0, x0 = (H - arrow.shape[0]) // 2, (W - arrow.shape[1]) // 2
+    img[y0:y0 + arrow.shape[0], x0:x0 + arrow.shape[1]] = arrow
+    return img
 
 
 def main():
@@ -81,11 +102,14 @@ def main():
 
     goal = make_goal()
     signs = {"goal.png": goal, "arrow_left.png": make_arrow("left"), "arrow_right.png": make_arrow("right")}
+    padded = pad_original_arrow()
+    if padded is not None:
+        signs["arrow_print.png"] = padded  # 우리 화살표를 여백 넉넉하게 (인쇄용)
     for name, img in signs.items():
         save_image(config.SIGNS_DIR / name, img)
         print(f"생성: {config.SIGNS_DIR / name}")
 
-    template = config.TEMPLATES_DIR / "goal.png"
+    template = config.TEMPLATES_DIR / "goal" / "printed.png"
     if args.force or not template.exists():
         save_image(template, goal)
         print(f"GOAL 매칭 템플릿 등록: {template}")
